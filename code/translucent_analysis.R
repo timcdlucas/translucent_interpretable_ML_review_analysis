@@ -39,37 +39,79 @@ sapply(p, class)
 
 #+ Choose 
 
-# Maybe social group size.
+# Want something with quite a lot of data. Litter size?
 
-ggplot(p, aes(X10.2_SocialGrpSize)) + geom_histogram()
+sum(!is.na(p$X15.1_LitterSize))
 
-p$X10.2_SocialGrpSize %>% summary
+ggplot(p, aes(X15.1_LitterSize)) + geom_histogram()
+
+p$X15.1_LitterSize %>% summary
 
 large_orders <- 
   p %>% 
-    filter(!is.na(X10.2_SocialGrpSize)) %>% 
+    filter(!is.na(sum(!is.na(p$X15.1_LitterSize)))) %>% 
     group_by(MSW05_Order) %>% 
     count() %>%
     arrange(desc(n)) %>% 
-    filter(n > 20) %>% 
+    filter(n > 40) %>% 
     pull(MSW05_Order)
 
 p %>% 
   filter(MSW05_Order %in% large_orders) %>% 
-  ggplot(aes(X10.2_SocialGrpSize)) + 
+  ggplot(aes(X15.1_LitterSize)) + 
     geom_histogram() + 
     facet_wrap(~ MSW05_Order)
 
 
-ggplot(p, aes(x = MSW05_Order, y = X10.2_SocialGrpSize)) + geom_boxplot()
+ggplot(p, aes(x = MSW05_Order, y = X15.1_LitterSize)) + geom_boxplot()
 
 ## Don't wish to do too many bivariate plots at this point. Going to do a priori variable selection and p values later.
-ggplot(p, aes(x = X21.1_PopulationDensity_n.km2, y = X10.2_SocialGrpSize)) + 
+ggplot(p, aes(x = X21.1_PopulationDensity_n.km2, y = X15.1_LitterSize)) + 
   geom_point() + 
   geom_smooth() + 
   geom_smooth(method = 'lm', se = FALSE, colour = 'red') + 
   scale_x_log10()
 
+
+#' ## Some data cleaning
+
+
+#' # Now fit 4 models.
+
+#+ a_priori_var_selection
+
+
+
+#+ elastic_net
+
+
+
+#+ 
+
+
+3 models
+typical ecological modelling
+regularised regression
+  - maxent is regularised regression
+  - linear can still have interactions,
+ nonlinear, etc.
+  - relationship to Bayes?
+spline or gp
+random forest/xgboost
+
+
+2 or 3 questions.
+  - generate hypotheses
+    - var imp
+    - interaction importance
+    - ice etc.
+  - gain some understanding of a system
+     - predictability
+     - complexity
+     - r2
+     - random effects?
+  - understand individual points
+    - lime
 
 
 
