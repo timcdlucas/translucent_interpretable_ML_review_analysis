@@ -19,7 +19,7 @@ knitr::opts_chunk$set(cache = TRUE, fig.width = 7, fig.height = 5)
 library(dplyr)
 library(ggplot2)
 library(caret)
-
+library(doParallel)
 
 #'## The data
 
@@ -75,8 +75,35 @@ ggplot(p, aes(x = X21.1_PopulationDensity_n.km2, y = X15.1_LitterSize)) +
 
 #' ## Some data cleaning
 
+# Remove NAs in response and response where litter size is less than one (doesn't make sense).
+p <- p %>% 
+       filter(!is.na(X15.1_LitterSize)) %>% 
+       filter(X15.1_LitterSize >= 1) %>% 
+       mutate(y = log1p(X15.1_LitterSize)) %>% 
+       select(-X15.1_LitterSize, -References)
+
+p_notaxa <- p %>% 
+              select(-contains('MSW05'))
+
+preprocesses <- preProcess(p, method = 'medianImpute')
+p_impute <- predict(preprocesses, p_notaxa)
+
 
 #' # Now fit 4 models.
+
+#+ caret_Setup
+
+folds <- createFolds(p$y, k = 5, returnTrain = TRUE)
+trcntrl <- trainControl(index = folds, savePredictions = TRUE, preProcess = 'knn')
+
+
+#+ paralell_setup
+
+
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl)
+
+
 
 #+ a_priori_var_selection
 
@@ -84,21 +111,35 @@ ggplot(p, aes(x = X21.1_PopulationDensity_n.km2, y = X15.1_LitterSize)) +
 
 #+ elastic_net
 
+m1_enet <- train(y ~ ., data = p_impute, method = 'enet', tuneLength = 15, trControl = trcntrl, na.action = na.omit)
+
+plot(m1_enet)
 
 
-#+ 
+
+#+ gp?
 
 
-3 models
-typical ecological modelling
-regularised regression
-  - maxent is regularised regression
-  - linear can still have interactions,
- nonlinear, etc.
-  - relationship to Bayes?
-spline or gp
-random forest/xgboost
 
+
+#+ ranger
+
+
+
+#' # Global analysis.
+
+#' # Generate hypotheses to test more formally.
+
+
+
+
+
+
+#' # Point level analysis
+
+
+
+#' # Random effects.
 
 2 or 3 questions.
   - generate hypotheses
