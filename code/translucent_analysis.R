@@ -19,7 +19,7 @@ knitr::opts_chunk$set(cache = TRUE, fig.width = 7, fig.height = 5)
 library(dplyr)
 library(ggplot2)
 library(caret)
-
+library(lime)
 library(doParallel)
 
 source('helpers.R')
@@ -173,6 +173,13 @@ compare_models(m0_lm, m3_rf)
 #'    - interaction importance
 #'    - ice etc.
 
+
+#+ varimp
+
+varImp(m1_enet)
+varImp(m2_gp)
+varImp(m3_rf)
+
 #' # Examine correlation structure
 
 #'  - examine correlation structure (variable level)
@@ -192,5 +199,33 @@ compare_models(m0_lm, m3_rf)
 
 #'  - understand individual points
 #'    - lime
+
+
+#+ lime
+
+# Explain Tenrec ecaudatus. Largest litter size. And other large litters
+l <- order(p_impute$y, decreasing = TRUE)[1:5]
+
+
+
+m1_lime <- lime(p_impute, m1_enet)
+m1_explain <- explain(p_impute[l, ], m1_lime, n_features = 6)
+
+plot_features(m1_explain)
+
+
+m2_lime <- lime(p_impute, m2_gp)
+m2_explain <- explain(p_impute[l, ], m2_lime, n_features = 6)
+
+plot_features(m2_explain)
+
+
+m3_lime <- lime(p_impute, m3_rf)
+m3_explain <- explain(p_impute[l, ], m3_lime, n_features = 6)
+
+plot_features(m1_explain)
+
+
+
 
 
