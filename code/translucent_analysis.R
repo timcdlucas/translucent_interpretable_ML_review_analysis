@@ -19,7 +19,10 @@ knitr::opts_chunk$set(cache = TRUE, fig.width = 7, fig.height = 5)
 library(dplyr)
 library(ggplot2)
 library(caret)
+
 library(doParallel)
+
+source('helpers.R')
 
 #'## The data
 
@@ -80,7 +83,7 @@ p <- p %>%
        filter(!is.na(X15.1_LitterSize)) %>% 
        filter(X15.1_LitterSize >= 1) %>% 
        mutate(y = log1p(X15.1_LitterSize)) %>% 
-       select(-X15.1_LitterSize, -References)
+       select(-X15.1_LitterSize, -References, -X24.1_TeatNumber)
 
 p_notaxa <- p %>% 
               select(-contains('MSW05'))
@@ -94,7 +97,7 @@ p_impute <- predict(preprocesses, p_notaxa)
 #+ caret_Setup
 
 folds <- createFolds(p$y, k = 5, returnTrain = TRUE)
-trcntrl <- trainControl(index = folds, savePredictions = TRUE, preProcess = 'knn')
+trcntrl <- trainControl(index = folds, savePredictions = TRUE, search = 'random')
 
 
 #+ paralell_setup
@@ -106,54 +109,88 @@ registerDoParallel(cl)
 
 
 #+ a_priori_var_selection
+apriori_formula <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + X9.1_GestationLen_d + X14.1_InterbirthInterval_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m
+m0_lm <- train(apriori_formula, data = p_impute, method = 'lm', trControl = trcntrl, na.action = na.omit)
+
+plotCV(m0_lm)
 
 
+summary(m0_lm$finalModel)
+
+
+
+m0_pglm <- NULL
 
 #+ elastic_net
 
-m1_enet <- train(y ~ ., data = p_impute, method = 'enet', tuneLength = 15, trControl = trcntrl, na.action = na.omit)
+enet_gr <- expand.grid(lambda = 10 ^ seq(0, -4, length.out = 20), fraction = c(seq(0.01, 1, length.out = 25)))
+m1_enet <- train(y ~ ., data = p_impute, method = 'enet', tuneGrid = enet_gr, trControl = trcntrl, na.action = na.omit)
 
-plot(m1_enet)
+ggplot(m1_enet)
 
+plotCV(m1_enet)
 
 
 #+ gp?
 
+gp_gr <- data.frame(sigma = c(0.01, 0.02, 0.04, 0.08, 0.16))
+m2_gp <- train(y ~ ., data = p_impute, method = 'gaussprRadial', tuneGrid = gp_gr, trControl = trcntrl, na.action = na.omit)
 
+plot(m2_gp)
+
+plotCV(m2_gp)
 
 
 #+ ranger
 
+m3_rf <- train(y ~ ., data = p_impute, method = 'ranger', tuneLength = 15, trControl = trcntrl, na.action = na.omit)
+
+plot(m3_rf)
+
+plotCV(m3_rf)
+
+
+
+#+ any_extras
+
+compare_models(m2_gp, m3_rf)
+compare_models(m1_enet, m3_rf)
+compare_models(m0_lm, m3_rf)
 
 
 #' # Global analysis.
 
+#'  - gain some understanding of a system
+#'     - predictability
+#'     - complexity
+#'     - r2
+
 #' # Generate hypotheses to test more formally.
 
 
+#'  - generate hypotheses (variable level)
+#'    - var imp
+#'    - interaction importance
+#'    - ice etc.
+
+#' # Examine correlation structure
+
+#'  - examine correlation structure (variable level)
+#'     - random effects
+#'     - mean zero
+#'     - unseen values
+#'     - control Vs use in prediction
+#'     - shared power
+#'     - feature engineering (eg t-1 value)
+#'     - stacked generalisation
+#'     - priors
+#'     - random slopes are regularised interactions. dealt with fairly natively by RF.
+#'     - RF on distance to points could be applied to phylogeny.
 
 
+#' # Point level understanding
 
-
-#' # Point level analysis
-
-
-
-#' # Random effects.
-
-2 or 3 questions.
-  - generate hypotheses
-    - var imp
-    - interaction importance
-    - ice etc.
-  - gain some understanding of a system
-     - predictability
-     - complexity
-     - r2
-     - random effects?
-  - understand individual points
-    - lime
-
-
+#'  - understand individual points
+#'    - lime
 
 
