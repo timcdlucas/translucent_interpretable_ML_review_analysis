@@ -21,6 +21,8 @@ library(ggplot2)
 library(caret)
 library(lime)
 library(doParallel)
+library(pdp)
+library(ICEbox)
 
 source('helpers.R')
 
@@ -126,7 +128,7 @@ m0_pglm <- NULL
 enet_gr <- expand.grid(lambda = 10 ^ seq(0, -4, length.out = 20), fraction = c(seq(0.01, 1, length.out = 25)))
 m1_enet <- train(y ~ ., data = p_impute, method = 'enet', tuneGrid = enet_gr, trControl = trcntrl, na.action = na.omit)
 
-ggplot(m1_enet)
+plot(m1_enet)
 
 plotCV(m1_enet)
 
@@ -143,7 +145,7 @@ plotCV(m2_gp)
 
 #+ ranger
 
-m3_rf <- train(y ~ ., data = p_impute, method = 'ranger', tuneLength = 15, trControl = trcntrl, na.action = na.omit)
+m3_rf <- train(y ~ ., data = p_impute, method = 'ranger', tuneLength = 15, trControl = trcntrl, na.action = na.omit, importance = 'impurity')
 
 plot(m3_rf)
 
@@ -173,12 +175,150 @@ compare_models(m0_lm, m3_rf)
 #'    - interaction importance
 #'    - ice etc.
 
+#' # Find variable importance for each model
 
 #+ varimp
 
 varImp(m1_enet)
 varImp(m2_gp)
 varImp(m3_rf)
+
+
+
+#' ## Now plot some functional forms
+
+#+ pdp_gest
+
+partial(m2_gp, 
+        pred.var = c('X9.1_GestationLen_d'),
+        parallel = TRUE, plot = TRUE)
+
+partial(m3_rf, 
+        pred.var = c('X9.1_GestationLen_d'),
+        parallel = TRUE, plot = TRUE)
+
+#+ pdp_lat
+
+partial(m2_gp, 
+        pred.var = c('X26.4_GR_MidRangeLat_dd'),
+        parallel = TRUE, plot = TRUE)
+
+partial(m3_rf, 
+        pred.var = c('X26.4_GR_MidRangeLat_dd'),
+        parallel = TRUE, plot = TRUE)
+
+#+ pdp_pet
+
+partial(m2_gp, 
+        pred.var = c('X30.2_PET_Mean_mm'),
+        parallel = TRUE, plot = TRUE)
+
+partial(m3_rf, 
+        pred.var = c('X30.2_PET_Mean_mm'),
+        parallel = TRUE, plot = TRUE)
+
+
+#+ pdp_temp
+
+partial(m2_gp, 
+        pred.var = c('X28.2_Temp_Mean_01degC'),
+        parallel = TRUE, plot = TRUE)
+
+
+partial(m3_rf, 
+        pred.var = c('X28.2_Temp_Mean_01degC'),
+        parallel = TRUE, plot = TRUE)
+
+
+#+ pdp_gest_lat
+
+partial(m2_gp, 
+        pred.var = c('X9.1_GestationLen_d', 'X26.4_GR_MidRangeLat_dd'),
+        parallel = TRUE, plot = TRUE)
+
+partial(m3_rf, 
+        pred.var = c('X9.1_GestationLen_d', 'X26.4_GR_MidRangeLat_dd'),
+        parallel = TRUE, plot = TRUE)
+
+
+#+ pdp_gest_pet
+
+partial(m2_gp, 
+        pred.var = c('X9.1_GestationLen_d', 'X30.2_PET_Mean_mm'),
+        parallel = TRUE, plot = TRUE)
+
+partial(m3_rf, 
+        pred.var = c('X9.1_GestationLen_d', 'X30.2_PET_Mean_mm'),
+        parallel = TRUE, plot = TRUE)
+
+
+
+#' # ICE plots
+
+#+ ice
+
+m2_gp_ice <- ice(m2_gp, p_impute, p_impute$y, 'X9.1_GestationLen_d', frac_to_build = 0.1)
+plot(m2_gp_ice)
+
+m3_rf_ice <- ice(m3_rf, p_impute, p_impute$y, 'X9.1_GestationLen_d', frac_to_build = 0.1)
+plot(m3_rf_ice)
+
+
+#+ ice_lat
+
+m2_gp_ice_lat <- ice(m2_gp, p_impute, p_impute$y, 'X26.4_GR_MidRangeLat_dd', frac_to_build = 0.1)
+plot(m2_gp_ice_lat)
+
+m3_rf_ice_lat <- ice(m3_rf, p_impute, p_impute$y, 'X26.4_GR_MidRangeLat_dd', frac_to_build = 0.1)
+plot(m3_rf_ice_lat)
+
+
+#+ ice_temp
+
+m2_gp_ice_temp <- ice(m2_gp, p_impute, p_impute$y, 'X28.2_Temp_Mean_01degC', frac_to_build = 0.1)
+plot(m2_gp_ice_temp)
+
+m3_rf_ice_temp <- ice(m3_rf, p_impute, p_impute$y, 'X28.2_Temp_Mean_01degC', frac_to_build = 0.1)
+plot(m3_rf_ice_temp)
+
+
+#+ clustered_ice
+
+
+m2_gp_ice_c <- ice(m2_gp, p_impute, p_impute$y, 'X9.1_GestationLen_d')
+clusterICE(m2_gp_ice_c, nClusters = 20, centered = TRUE)
+clusterICE(m2_gp_ice_c, nClusters = 20, centered = FALSE)
+
+
+m3_rf_ice_c <- ice(m3_rf, p_impute, p_impute$y, 'X9.1_GestationLen_d')
+clusterICE(m3_rf_ice_c, nClusters = 20, centered = FALSE)
+
+
+
+#+ clustered_ice_lat
+
+
+m2_gp_ice_lat_c <- ice(m2_gp, p_impute, p_impute$y, 'X26.4_GR_MidRangeLat_dd')
+clusterICE(m2_gp_ice_lat_c, nClusters = 20, centered = FALSE)
+
+
+m3_rf_ice_lat_c <- ice(m3_rf, p_impute, p_impute$y, 'X26.4_GR_MidRangeLat_dd')
+clusterICE(m3_rf_ice_lat_c, nClusters = 20, centered = FALSE)
+
+
+
+
+#+ clustered_ice_temp
+
+
+m2_gp_ice_temp_c <- ice(m2_gp, p_impute, p_impute$y, 'X28.2_Temp_Mean_01degC')
+clusterICE(m2_gp_ice_temp_c, nClusters = 20, centered = FALSE)
+
+
+m3_rf_ice_temp_c <- ice(m3_rf, p_impute, p_impute$y, 'X28.2_Temp_Mean_01degC')
+clusterICE(m3_rf_ice_temp_c, nClusters = 20, centered = FALSE)
+
+
 
 #' # Examine correlation structure
 
@@ -201,7 +341,7 @@ varImp(m3_rf)
 #'    - lime
 
 
-#+ lime
+#+ lime, fig.width = 10, fig.height = 8
 
 # Explain Tenrec ecaudatus. Largest litter size. And other large litters
 l <- order(p_impute$y, decreasing = TRUE)[1:5]
@@ -228,4 +368,14 @@ plot_features(m1_explain)
 
 
 
+
+
+
+
+
+
+
+#+ session_info
+
+sessionInfo()
 
