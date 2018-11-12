@@ -14,7 +14,7 @@
 knitr::opts_chunk$set(cache = TRUE, fig.width = 7, fig.height = 5)
 
 
-#+ libs,
+#+ libs, cache = FALSE
 
 library(dplyr)
 library(ggplot2)
@@ -102,7 +102,7 @@ folds <- createFolds(p$y, k = 5, returnTrain = TRUE)
 trcntrl <- trainControl(index = folds, savePredictions = TRUE, search = 'random')
 
 
-#+ paralell_setup
+#+ paralell_setup, cache = FALSE
 
 
 cl <- makePSOCKcluster(6)
@@ -143,9 +143,10 @@ plot(m2_gp)
 plotCV(m2_gp)
 
 
-#+ ranger
+#+ ranger, eval = TRUE
 
-m3_rf <- train(y ~ ., data = p_impute, method = 'ranger', tuneLength = 15, trControl = trcntrl, na.action = na.omit, importance = 'impurity')
+rf_gr <- data.frame(mtry = c(2, 5, 10, 20), splitrule = 'variance', min.node.size = c(5, 10, 20, 50))
+m3_rf <- train(y ~ ., data = p_impute, method = 'ranger', tuneGrid = rf_gr, trControl = trcntrl, na.action = na.omit, importance = 'impurity')
 
 plot(m3_rf)
 
