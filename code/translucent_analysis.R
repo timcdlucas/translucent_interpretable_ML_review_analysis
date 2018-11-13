@@ -23,6 +23,7 @@ library(lime)
 library(doParallel)
 library(pdp)
 library(ICEbox)
+library(iml)
 
 source('helpers.R')
 
@@ -145,7 +146,7 @@ plotCV(m2_gp)
 
 #+ ranger, eval = TRUE
 
-rf_gr <- data.frame(mtry = c(2, 5, 10, 20), splitrule = 'variance', min.node.size = c(5, 10, 20, 50))
+rf_gr <- expand.grid(mtry = c(2, 5, 10, 20, 30), splitrule = 'variance', min.node.size = c(5, 10, 20, 50))
 m3_rf <- train(y ~ ., data = p_impute, method = 'ranger', tuneGrid = rf_gr, trControl = trcntrl, na.action = na.omit, importance = 'impurity')
 
 plot(m3_rf)
@@ -177,6 +178,10 @@ compare_models(m0_lm, m3_rf)
 #'    - ice etc.
 
 #' # Find variable importance for each model
+
+
+#+ surrogate_model
+
 
 #+ varimp
 
@@ -253,6 +258,39 @@ partial(m3_rf,
         parallel = TRUE, plot = TRUE)
 
 
+#' Test for interactions
+
+#+ all_inter
+
+predictor_gp = Predictor$new(m2_gp, data = select(p_impute, -y), y = p_impute$y)
+predictor_rf = Predictor$new(m3_rf, data = select(p_impute, -y), y = p_impute$y)
+
+
+interact_gp = Interaction$new(predictor_gp)
+interact_gp
+plot(interact_gp)
+
+
+interact_rf = Interaction$new(predictor_rf)
+interact_rf
+plot(interact_rf)
+
+
+#+ which_inter
+
+interact_gp = Interaction$new(predictor_gp, feature = "X9.1_GestationLen_d")
+plot(interact_gp)
+
+
+interact_rf = Interaction$new(predictor_rf, feature = "X9.1_GestationLen_d")
+plot(interact_rf)
+
+interact_gp2 = Interaction$new(predictor_gp, feature = "X26.4_GR_MidRangeLat_dd")
+plot(interact_gp2)
+
+
+interact_rf2 = Interaction$new(predictor_rf, feature = "X26.4_GR_MidRangeLat_dd")
+plot(interact_rf2)
 
 #' # ICE plots
 
