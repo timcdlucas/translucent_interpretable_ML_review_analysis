@@ -112,10 +112,12 @@ registerDoParallel(cl)
 
 
 #+ a_priori_var_selection
-apriori_formula <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + X9.1_GestationLen_d + X14.1_InterbirthInterval_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m
+apriori_formula <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m
 m0_lm <- train(apriori_formula, data = p_impute, method = 'lm', trControl = trcntrl, na.action = na.omit)
 
 plotCV(m0_lm)
+
+m0_lm
 
 
 summary(m0_lm$finalModel)
@@ -133,6 +135,14 @@ plot(m1_enet)
 
 plotCV(m1_enet)
 
+m1_enet
+
+
+# Find the final parameters 
+#   https://stackoverflow.com/questions/40088228/how-to-retrieve-elastic-net-coefficients
+final_pars <- predict.enet(m1_enet$finalModel, s=m1_enet$bestTune[1, "fraction"], type="coef", mode="fraction")$coefficients
+final_pars
+sum(final_pars != 0)
 
 #+ gp?
 
@@ -143,6 +153,7 @@ plot(m2_gp)
 
 plotCV(m2_gp)
 
+m2_gp
 
 #+ ranger, eval = TRUE
 
@@ -153,6 +164,7 @@ plot(m3_rf)
 
 plotCV(m3_rf)
 
+m3_rf
 
 
 #+ any_extras
@@ -267,30 +279,36 @@ predictor_rf = Predictor$new(m3_rf, data = select(p_impute, -y), y = p_impute$y)
 
 
 interact_gp = Interaction$new(predictor_gp)
-interact_gp
+interact_gp$results %>% arrange(desc(.interaction)) %>% head
 plot(interact_gp)
 
 
 interact_rf = Interaction$new(predictor_rf)
-interact_rf
+interact_rf$results %>% arrange(desc(.interaction)) %>% head
 plot(interact_rf)
 
 
 #+ which_inter
 
-interact_gp = Interaction$new(predictor_gp, feature = "X9.1_GestationLen_d")
-plot(interact_gp)
+interact_ges_gp = Interaction$new(predictor_gp, feature = "X9.1_GestationLen_d")
+interact_ges_gp$results %>% arrange(desc(.interaction)) %>% head
+plot(interact_ges_gp)
 
 
-interact_rf = Interaction$new(predictor_rf, feature = "X9.1_GestationLen_d")
-plot(interact_rf)
-
-interact_gp2 = Interaction$new(predictor_gp, feature = "X26.4_GR_MidRangeLat_dd")
-plot(interact_gp2)
+interact_ges_rf = Interaction$new(predictor_rf, feature = "X9.1_GestationLen_d")
+interact_ges_rf$results %>% arrange(desc(.interaction)) %>% head
+plot(interact_ges_rf)
 
 
-interact_rf2 = Interaction$new(predictor_rf, feature = "X26.4_GR_MidRangeLat_dd")
-plot(interact_rf2)
+
+interact_lat_gp = Interaction$new(predictor_gp, feature = "X26.4_GR_MidRangeLat_dd")
+interact_lat_gp$results %>% arrange(desc(.interaction)) %>% head
+plot(interact_lat_gp)
+
+
+interact_lat_rf = Interaction$new(predictor_rf, feature = "X26.4_GR_MidRangeLat_dd")
+interact_lat_rf$results %>% arrange(desc(.interaction)) %>% head
+plot(interact_lat_gp)
 
 #' # ICE plots
 
