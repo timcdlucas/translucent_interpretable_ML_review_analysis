@@ -135,7 +135,6 @@ plot(m1_enet)
 
 plotCV(m1_enet)
 
-m1_enet
 
 
 # Find the final parameters 
@@ -398,29 +397,30 @@ clusterICE(m3_rf_ice_temp_c, nClusters = 20, centered = FALSE)
 #'    - lime
 
 
-#+ lime, fig.width = 10, fig.height = 8
+#+ lime, fig.width = 10, fig.height = 12
 
 # Explain Tenrec ecaudatus. Largest litter size. And other large litters
-l <- order(p_impute$y, decreasing = TRUE)[1:5]
-
+l1 <- pred_head(m1_enet)
+l2 <- pred_head(m2_gp)
+l3 <- pred_head(m3_rf)
 
 
 m1_lime <- lime(p_impute, m1_enet)
-m1_explain <- explain(p_impute[l, ], m1_lime, n_features = 6)
+m1_explain <- explain(p_impute[l1, ], m1_lime, n_features = 20, feature_select = 'auto')
 
 plot_features(m1_explain)
 
 
 m2_lime <- lime(p_impute, m2_gp)
-m2_explain <- explain(p_impute[l, ], m2_lime, n_features = 6)
+m2_explain <- explain(p_impute[l2, ], m2_lime, n_features = 20, feature_select = 'auto')
 
 plot_features(m2_explain)
 
 
 m3_lime <- lime(p_impute, m3_rf)
-m3_explain <- explain(p_impute[l, ], m3_lime, n_features = 6)
+m3_explain <- explain(p_impute[l3, ], m3_lime, n_features = 20, feature_select = 'auto')
 
-plot_features(m1_explain)
+plot_features(m3_explain)
 
 
 
