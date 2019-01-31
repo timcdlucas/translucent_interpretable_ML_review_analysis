@@ -476,8 +476,14 @@ plot(phylo_profile$logLik ~ phylo_profile$x, type = 'l')
 
 #+ INLA_phyloreg_compare
 
-cov_matrix <- VCV.array(comp_data$phy)
-precision_matrix <- solve(cov_matrix)
+# Code broadly copied from https://github.com/daijiang/phyr/blob/master/R/pglmm-utils.R#L54
+nspp <- length(comp_data$phy$tip.label)
+Vphy <- ape::vcv(comp_data$phy)
+Vphy <- Vphy / max(Vphy)
+Vphy <- Vphy / exp(determinant(Vphy)$modulus[1]/nspp)
+
+order <- match(p$MSW05_Binomial[1:100], colnames(Vphy))
+Vphy <- Vphy[order, order] # same order as species levels
 
 # Model will not run without log transforming.
 apriori_form_inla <- y ~ log(X5.1_AdultBodyMass_g) + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
@@ -493,21 +499,22 @@ m0_inla_comp$summary.hyperpar
 
 comp_data_full <- comparative.data(tree, cbind(p_impute, MSW05_Binomial = p$MSW05_Binomial), 'MSW05_Binomial')
 
-cov_matrix <- VCV.array(comp_data_full$phy)
+# Code broadly copied from https://github.com/daijiang/phyr/blob/master/R/pglmm-utils.R#L54
+nspp <- length(comp_data_full$phy$tip.label)
+Vphy <- ape::vcv(comp_data_full$phy)
+Vphy <- Vphy / max(Vphy)
+Vphy <- Vphy / exp(determinant(Vphy)$modulus[1]/nspp)
 
-min_cov <- min(cov_matrix[cov_matrix != 0])
-cov_matrix[cov_matrix == 0] <- min_cov
-precision_matrix <- solve(cov_matrix)
-precision_matrix[precision_matrix <= 0] <- 0
+order <- match(p$MSW05_Binomial, colnames(Vphy))
+Vphy <- Vphy[order, order] # same order as species levels
 
-precision_matrix_sparse <- Matrix(precision_matrix, sparse = TRUE)
 
 if(FALSE){
 tic()
 # Model will not run without log transforming.
 apriori_form_inla2 <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
                              X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
-                             f(ii, model = 'generic0', Cmatrix = precision_matrix)
+                             f(ii, model = 'generic0', Cmatrix = Vphy)
 
 m0_inla_comp2 <- inla(apriori_form_inla2, data = cbind(p_impute, ii = 1:nrow(p_impute)), 
                       control.predictor = list(compute = TRUE),
@@ -519,7 +526,6 @@ m0_inla_comp2$summary.hyperpar
 
 toc()
 }
-
 
 
 
