@@ -16,14 +16,24 @@ knitr::opts_chunk$set(cache = TRUE, fig.width = 7, fig.height = 5)
 
 #+ libs, cache = FALSE
 
+# General
 library(dplyr)
 library(ggplot2)
+library(doParallel)
+
+# Modelling libraries
 library(caret)
 library(lime)
-library(doParallel)
 library(pdp)
 library(ICEbox)
 library(iml)
+library(elasticnet)
+library(INLA)
+
+
+# Phylogenetic libraries.
+library(ape)
+library(caper)
 
 source('helpers.R')
 
@@ -88,11 +98,35 @@ p <- p %>%
        mutate(y = log1p(X15.1_LitterSize)) %>% 
        select(-X15.1_LitterSize, -References, -X24.1_TeatNumber)
 
+
 p_notaxa <- p %>% 
               select(-contains('MSW05'))
 
 preprocesses <- preProcess(p, method = 'medianImpute')
 p_impute <- predict(preprocesses, p_notaxa)
+
+
+
+#' ## Get phylogeny data.
+
+#' ### read in phylogeny data.
+
+# Read in trees
+tree <- read.nexus('https://onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1111%2Fj.1461-0248.2009.01307.x&file=ELE_1307_sm_SA1.tre')
+
+# Select best supported tree
+tree <- tree[[1]]
+tree$tip.label <- gsub('_', ' ', tree$tip.label)
+
+# Check if species are available.
+mean(p$MSW05_Binomial %in% tree$tip.label)
+in_phylo <- p$MSW05_Binomial %in% tree$tip.label
+
+# Remove data that is not in the phylogeny.
+
+p <- p %>% filter(in_phylo) 
+p_impute <- p_impute %>% filter(in_phylo)
+
 
 
 #' # Now fit 4 models.
@@ -106,7 +140,7 @@ trcntrl <- trainControl(index = folds, savePredictions = TRUE, search = 'random'
 #+ paralell_setup, cache = FALSE
 
 
-cl <- makePSOCKcluster(6)
+cl <- makeForkCluster(6)
 registerDoParallel(cl)
 
 
@@ -157,7 +191,7 @@ m2_gp
 #+ ranger, eval = TRUE
 
 rf_gr <- expand.grid(mtry = c(2, 5, 10, 20, 30), splitrule = 'variance', min.node.size = c(5, 10, 20, 50))
-m3_rf <- train(y ~ ., data = p_impute, method = 'ranger', tuneGrid = rf_gr, trControl = trcntrl, na.action = na.omit, importance = 'impurity')
+m3_rf <- train(y ~ ., data = p_impute, method = 'ranger', tuneGrid = rf_gr, trControl = trcntrl, na.action = na.omit, importance = 'impurity', num.trees = 1000)
 
 plot(m3_rf)
 
@@ -191,7 +225,6 @@ compare_models(m0_lm, m3_rf)
 #' # Find variable importance for each model
 
 
-#+ surrogate_model
 
 
 #+ varimp
@@ -391,6 +424,107 @@ clusterICE(m3_rf_ice_temp_c, nClusters = 20, centered = FALSE)
 #'     - RF on distance to points could be applied to phylogeny.
 
 
+
+
+
+#' ## Using genus as categorical variable.
+
+#+ ranger_gen
+
+
+genus_dummy <- dummyVars(~ MSW05_Genus, data = p)
+genus_dummy_data <- data.frame(predict(genus_dummy, newdata = p))
+
+genus_data <- cbind(p_impute, genus_dummy_data)
+
+
+
+rf_gr_gen <- expand.grid(mtry = c(5, 20, 30, 100, 300, 500), splitrule = 'variance', min.node.size = c(5, 10, 20, 50))
+m3_rf_gen <- train(y ~ ., data = genus_data, method = 'ranger', tuneGrid = rf_gr_gen, 
+                   trControl = trcntrl, na.action = na.omit, importance = 'impurity', 
+                   save.memory = TRUE, num.trees = 1000)
+
+plot(m3_rf_gen)
+
+plotCV(m3_rf_gen)
+
+m3_rf_gen
+
+
+#' ## PGLS phylogenetic regression
+#' Fit a standard pylogenetic regression with caper so we can check the later INLA models are reasonable.
+
+#+ apriori_phyloreg
+
+
+
+comp_data <- comparative.data(tree, cbind(p_impute, MSW05_Binomial = p$MSW05_Binomial)[1:100, ], 'MSW05_Binomial')
+
+# Model will not run without log transforming.
+apriori_formula_phylo <- y ~ log(X5.1_AdultBodyMass_g) + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
+                             X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m
+
+
+m0_pglm <- pgls(apriori_formula_phylo, data = comp_data)
+
+m0_pglm
+
+phylo_profile <- pgls.profile(m0_pglm)
+
+plot(phylo_profile$logLik ~ phylo_profile$x, type = 'l')
+
+
+#+ INLA_phyloreg_compare
+
+cov_matrix <- VCV.array(comp_data$phy)
+precision_matrix <- solve(cov_matrix)
+
+# Model will not run without log transforming.
+apriori_form_inla <- y ~ log(X5.1_AdultBodyMass_g) + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
+                             X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
+                             f(ii, model = 'generic0', Cmatrix = precision_matrix)
+
+
+m0_inla_comp <- inla(apriori_form_inla, data = cbind(p_impute[1:100, ], ii = 1:100), control.predictor = list(compute = TRUE))
+m0_inla_comp$summary.fixed
+m0_inla_comp$summary.hyperpar
+
+#+ INLA_phyloreg
+
+comp_data_full <- comparative.data(tree, cbind(p_impute, MSW05_Binomial = p$MSW05_Binomial), 'MSW05_Binomial')
+
+cov_matrix <- VCV.array(comp_data_full$phy)
+
+min_cov <- min(cov_matrix[cov_matrix != 0])
+cov_matrix[cov_matrix == 0] <- min_cov
+precision_matrix <- solve(cov_matrix)
+precision_matrix[precision_matrix <= 0] <- 0
+
+precision_matrix_sparse <- Matrix(precision_matrix, sparse = TRUE)
+
+if(FALSE){
+tic()
+# Model will not run without log transforming.
+apriori_form_inla2 <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
+                             X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
+                             f(ii, model = 'generic0', Cmatrix = precision_matrix)
+
+m0_inla_comp2 <- inla(apriori_form_inla2, data = cbind(p_impute, ii = 1:nrow(p_impute)), 
+                      control.predictor = list(compute = TRUE),
+                      control.inla= list(strategy = "gaussian", int.strategy = "eb"))
+
+#m0_inla_comp2 <- inla(apriori_form_inla2, data = cbind(p_impute, ii = 1:nrow(p_impute)))
+m0_inla_comp2$summary.fixed
+m0_inla_comp2$summary.hyperpar
+
+toc()
+}
+
+
+
+
+
+
 #' # Point level understanding
 
 #'  - understand individual points
@@ -435,4 +569,10 @@ plot_features(m3_explain)
 #+ session_info
 
 sessionInfo()
+
+
+#+ close_cluster, cache = FALSE
+
+stopCluster(cl)
+
 
