@@ -96,11 +96,11 @@ p <- p %>%
        filter(!is.na(X15.1_LitterSize)) %>% 
        filter(X15.1_LitterSize >= 1) %>% 
        mutate(y = log1p(X15.1_LitterSize)) %>% 
-       select(-X15.1_LitterSize, -References, -X24.1_TeatNumber)
+       dplyr::select(-X15.1_LitterSize, -References, -X24.1_TeatNumber)
 
 
 p_notaxa <- p %>% 
-              select(-contains('MSW05'))
+              dplyr::select(-contains('MSW05'))
 
 preprocesses <- preProcess(p, method = 'medianImpute')
 p_impute <- predict(preprocesses, p_notaxa)
@@ -160,7 +160,7 @@ log_cols <- c(2, 4, 7, 8,
               31, 32, 33, 
               40, 41, 42)
 
-p_impute[, log_cols] <- log(p_impute[, log_cols])
+p_impute[, log_cols] <- log1p(p_impute[, log_cols])
 
 
 par(mfrow = c(2, 2))
@@ -222,9 +222,9 @@ plotCV(m1_enet)
 
 # Find the final parameters 
 #   https://stackoverflow.com/questions/40088228/how-to-retrieve-elastic-net-coefficients
-final_pars <- predict.enet(m1_enet$finalModel, s=m1_enet$bestTune[1, "fraction"], type="coef", mode="fraction")$coefficients
-final_pars
-sum(final_pars != 0)
+#final_pars <- predict.enet(m1_enet$finalModel, s=m1_enet$bestTune[1, "fraction"], type="coef", mode="fraction")$coefficients
+#final_pars
+#sum(final_pars != 0)
 
 #+ gp?
 
@@ -355,8 +355,8 @@ partial(m3_rf,
 
 #+ all_inter
 
-predictor_gp = Predictor$new(m2_gp, data = select(p_impute, -y), y = p_impute$y)
-predictor_rf = Predictor$new(m3_rf, data = select(p_impute, -y), y = p_impute$y)
+predictor_gp = Predictor$new(m2_gp, data = dplyr::select(p_impute, -y), y = p_impute$y)
+predictor_rf = Predictor$new(m3_rf, data = dplyr::select(p_impute, -y), y = p_impute$y)
 
 
 interact_gp = Interaction$new(predictor_gp)
