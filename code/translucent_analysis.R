@@ -128,6 +128,55 @@ p <- p %>% filter(in_phylo)
 p_impute <- p_impute %>% filter(in_phylo)
 
 
+#' ## Data summary
+
+#+data_summary
+
+dim(p_impute)
+names(p_impute)
+
+par(mfrow = c(2, 2))
+
+for(i in 0:11){
+  for( j in 1:4){
+
+    if(j + 4 * i <= ncol(p_impute)){
+      hist(p_impute[, j + 4 * i], breaks = 100, ylim = c(0, 80), main = j + 4 * i)
+    }
+
+  }
+  print(i)
+  par(mfrow = c(2, 2))
+}
+
+
+
+#' # Log Transforms
+#+ logtrans
+
+log_cols <- c(2, 4, 7, 8, 
+              10, 11, 13, 14, 15, 17, 18, 19, 
+              20, 21, 22, 23, 26, 27, 28, 29,  
+              31, 32, 33, 
+              40, 41, 42)
+
+p_impute[, log_cols] <- log(p_impute[, log_cols])
+
+
+par(mfrow = c(2, 2))
+
+for(i in 0:11){
+  for( j in 1:4){
+
+    if(j + 4 * i <= ncol(p_impute)){
+      hist(p_impute[, j + 4 * i], breaks = 100, ylim = c(0, 80), main = j + 4 * i)
+    }
+
+  }
+  print(i)
+  par(mfrow = c(2, 2))
+}
+
 
 #' # Now fit 4 models.
 
@@ -461,7 +510,7 @@ m3_rf_gen
 comp_data <- comparative.data(tree, cbind(p_impute, MSW05_Binomial = p$MSW05_Binomial)[1:100, ], 'MSW05_Binomial')
 
 # Model will not run without log transforming.
-apriori_formula_phylo <- y ~ log(X5.1_AdultBodyMass_g) + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
+apriori_formula_phylo <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
                              X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m
 
 
@@ -485,15 +534,17 @@ Vphy <- Vphy / exp(determinant(Vphy)$modulus[1]/nspp)
 order <- match(p$MSW05_Binomial[1:100], colnames(Vphy))
 Vphy <- Vphy[order, order] # same order as species levels
 
-# Model will not run without log transforming.
-apriori_form_inla <- y ~ log(X5.1_AdultBodyMass_g) + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
+apriori_form_inla <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
                              X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
-                             f(ii, model = 'generic0', Cmatrix = precision_matrix)
+                             f(ii, model = 'generic0', Cmatrix = Vphy)
 
 
 m0_inla_comp <- inla(apriori_form_inla, data = cbind(p_impute[1:100, ], ii = 1:100), control.predictor = list(compute = TRUE))
 m0_inla_comp$summary.fixed
 m0_inla_comp$summary.hyperpar
+
+
+
 
 #+ INLA_phyloreg
 
@@ -508,26 +559,90 @@ Vphy <- Vphy / exp(determinant(Vphy)$modulus[1]/nspp)
 order <- match(p$MSW05_Binomial, colnames(Vphy))
 Vphy <- Vphy[order, order] # same order as species levels
 
-
-if(FALSE){
-tic()
-# Model will not run without log transforming.
 apriori_form_inla2 <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
                              X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
                              f(ii, model = 'generic0', Cmatrix = Vphy)
 
-m0_inla_comp2 <- inla(apriori_form_inla2, data = cbind(p_impute, ii = 1:nrow(p_impute)), 
+# fit full model
+
+m0_inla_comp_full <- inla(apriori_form_inla2, data = cbind(p_impute, ii = 1:nrow(p_impute)), 
                       control.predictor = list(compute = TRUE),
                       control.inla= list(strategy = "gaussian", int.strategy = "eb"))
 
-#m0_inla_comp2 <- inla(apriori_form_inla2, data = cbind(p_impute, ii = 1:nrow(p_impute)))
-m0_inla_comp2$summary.fixed
-m0_inla_comp2$summary.hyperpar
 
-toc()
+
+
+m0_inla_comp_full$summary.fixed
+m0_inla_comp_full$summary.hyperpar
+
+
+#+ INLA_phyloreg_cv
+# cross validation
+m0_inla_comp2 <- list()
+
+for(f in 1:5){
+
+  cv_data <- cbind(p_impute, ii = 1:nrow(p_impute))
+
+  # remove hold out data
+  cv_data$y[folds[[f]]] <- NA
+
+  m0_inla_comp2[[f]] <- inla(apriori_form_inla2, data = cv_data, 
+                      control.predictor = list(compute = TRUE),
+                      control.inla= list(strategy = "gaussian", int.strategy = "eb"))
+
+}
+
+#+ INLA_phyloreg_cv_analysis
+# calc rmse and scatter plot
+
+inla_apriori_cvdat <- data.frame(y = p_impute$y, predy = NA)
+
+for(f in 1:5){
+  inla_apriori_cvdat$predy[folds[[f]]] <- m0_inla_comp2[[f]]$summary.fitted.values$mean[folds[[f]]]
 }
 
 
+sqrt(mean((inla_apriori_cvdat$predy - inla_apriori_cvdat$y) ^ 2))
+
+ggplot(inla_apriori_cvdat, aes(y, predy)) +
+  geom_point() +
+  #scale_y_continuous(limits = c(NA, 3)) + 
+  geom_abline(slope = 1, intercept = 0) +
+  geom_smooth() 
+
+
+#+ stacked_gen_setup, eval = FALSE
+
+mlist <- list(m1_enet, m2_gp, m3_rf)
+
+cv_preds <- lapply(mlist, best_tune_preds)
+cv_preds <- lapply(seq_along(cv_preds), function (x) cv_preds[[x]]$predicted)
+cv_preds <- do.call(cbind, cv_preds)
+
+names(cv_preds) <- c('enet', 'gp', 'rf')
+
+cv_preds$y <- p_impute$y # check order
+cv_preds$ii <- seq_len(nrow(cv_preds))
+
+stacked_form <- y ~  
+  f(enet, model='clinear', range=c(0, Inf), initial=0) +
+  f(gp, model='clinear', range=c(0, Inf), initial=0) +
+  f(rf, model='clinear', range=c(0, Inf), initial=0) +
+  f(ii, model = 'generic0', Cmatrix = Vphy)
+
+
+#+ stacked_full, eval = FALSE
+
+m0_inla_comp_full <- inla(stacked_form, data = cv_preds, 
+                      control.predictor = list(compute = TRUE),
+                      control.inla= list(strategy = "gaussian", int.strategy = "eb"))
+
+
+
+
+m0_inla_comp_full$summary.fixed
+m0_inla_comp_full$summary.hyperpar
 
 
 
