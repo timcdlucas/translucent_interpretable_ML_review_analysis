@@ -42,8 +42,9 @@ source('helpers.R')
 #' First we need to read in the data.
 
 #+ data_read
-p <- read.table(file = '../data/PanTHERIA_1-0_WR05_Aug2008.txt',
+p <- read.table(file = 'http://esapubs.org/archive/ecol/E090/184/PanTHERIA_1-0_WR05_Aug2008.txt',
   header = TRUE, sep = "\t", na.strings = c("-999", "-999.00"))
+
 
 names(p)
 sapply(p, function(x) mean(is.na(x))) %>% sort
@@ -80,6 +81,12 @@ p %>%
 
 
 ggplot(p, aes(x = MSW05_Order, y = X15.1_LitterSize)) + geom_boxplot()
+
+p %>%
+  group_by(MSW05_Order) %>% 
+  add_tally %>% 
+  filter(n > 20) %>% 
+    ggplot(aes(x = MSW05_Order, y = X15.1_LitterSize)) + geom_boxplot()
 
 ## Don't wish to do too many bivariate plots at this point. Going to do a priori variable selection and p values later.
 ggplot(p, aes(x = X21.1_PopulationDensity_n.km2, y = X15.1_LitterSize)) + 
@@ -178,6 +185,9 @@ for(i in 0:11){
 }
 
 
+
+
+
 #' # Now fit 4 models.
 
 #+ caret_Setup
@@ -207,8 +217,6 @@ summary(m0_lm$finalModel)
 
 
 
-m0_pglm <- NULL
-
 #+ elastic_net
 
 enet_gr <- expand.grid(lambda = 10 ^ seq(0, -4, length.out = 20), fraction = c(seq(0.01, 1, length.out = 25)))
@@ -218,6 +226,8 @@ plot(m1_enet)
 
 plotCV(m1_enet)
 
+#+ elastic_net_summary
+m1_enet$results$RMSE %>% min
 
 
 # Find the final parameters 
@@ -237,6 +247,9 @@ plotCV(m2_gp)
 
 m2_gp
 
+#+ gp_summary
+m2_gp$results$RMSE %>% min
+
 #+ ranger, eval = TRUE
 
 rf_gr <- expand.grid(mtry = c(2, 5, 10, 20, 30), splitrule = 'variance', min.node.size = c(5, 10, 20, 50))
@@ -247,6 +260,10 @@ plot(m3_rf)
 plotCV(m3_rf)
 
 m3_rf
+
+#+ ranger_summary
+m3_rf$results$RMSE %>% min
+
 
 
 #+ any_extras
@@ -500,6 +517,11 @@ plotCV(m3_rf_gen)
 m3_rf_gen
 
 
+#+ ranger_gen_summary
+m3_rf_gen$results$RMSE %>% min
+
+
+
 #' ## PGLS phylogenetic regression
 #' Fit a standard pylogenetic regression with caper so we can check the later INLA models are reasonable.
 
@@ -507,7 +529,7 @@ m3_rf_gen
 
 
 
-comp_data <- comparative.data(tree, cbind(p_impute, MSW05_Binomial = p$MSW05_Binomial)[1:100, ], 'MSW05_Binomial')
+comp_data <- comparative.data(tree, cbind(p_impute, MSW05_Binomial = p$MSW05_Binomial)[1:200, ], 'MSW05_Binomial')
 
 # Model will not run without log transforming.
 apriori_formula_phylo <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
@@ -525,21 +547,25 @@ plot(phylo_profile$logLik ~ phylo_profile$x, type = 'l')
 
 #+ INLA_phyloreg_compare
 
-# Code broadly copied from https://github.com/daijiang/phyr/blob/master/R/pglmm-utils.R#L54
-nspp <- length(comp_data$phy$tip.label)
-Vphy <- ape::vcv(comp_data$phy)
-Vphy <- Vphy / max(Vphy)
-Vphy <- Vphy / exp(determinant(Vphy)$modulus[1]/nspp)
 
-order <- match(p$MSW05_Binomial[1:100], colnames(Vphy))
+nspp <- length(comp_data$phy$tip.label)
+Vphy <- ape::cophenetic.phylo(comp_data$phy)
+Vphy <- Vphy / max(Vphy)
+diag(Vphy) <- 1
+
+order <- match(p$MSW05_Binomial[1:200], colnames(Vphy))
 Vphy <- Vphy[order, order] # same order as species levels
 
 apriori_form_inla <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
                              X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
-                             f(ii, model = 'generic0', Cmatrix = Vphy)
+                             f(phylo, model = 'generic0', Cmatrix = Vphy)
 
 
-m0_inla_comp <- inla(apriori_form_inla, data = cbind(p_impute[1:100, ], ii = 1:100), control.predictor = list(compute = TRUE))
+
+m0_inla_comp <- inla(apriori_form_inla, data = cbind(p_impute[1:200, ], phylo = 1:200), control.predictor = list(compute = TRUE))
+
+# autoplot(m0_inla_comp)
+
 m0_inla_comp$summary.fixed
 m0_inla_comp$summary.hyperpar
 
