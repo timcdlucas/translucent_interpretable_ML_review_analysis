@@ -549,9 +549,8 @@ plot(phylo_profile$logLik ~ phylo_profile$x, type = 'l')
 
 
 nspp <- length(comp_data$phy$tip.label)
-Vphy <- ape::cophenetic.phylo(comp_data$phy)
-Vphy <- Vphy / max(Vphy)
-diag(Vphy) <- 1
+Vphy <- ape::vcv.phylo(comp_data$phy)
+Vphy <- solve(Vphy)
 
 order <- match(p$MSW05_Binomial[1:200], colnames(Vphy))
 Vphy <- Vphy[order, order] # same order as species levels
