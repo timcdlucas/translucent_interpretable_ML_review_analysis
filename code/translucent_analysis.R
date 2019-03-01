@@ -568,6 +568,7 @@ m0_inla_comp <- inla(apriori_form_inla, data = cbind(p_impute[1:200, ], phylo = 
 m0_inla_comp$summary.fixed
 m0_inla_comp$summary.hyperpar
 
+plot(m0_inla_comp$summary.fixed$mean, coefficients(m0_pglm))
 
 
 
@@ -578,19 +579,15 @@ comp_data_full <- comparative.data(tree, cbind(p_impute, MSW05_Binomial = p$MSW0
 # Code broadly copied from https://github.com/daijiang/phyr/blob/master/R/pglmm-utils.R#L54
 nspp <- length(comp_data_full$phy$tip.label)
 Vphy <- ape::vcv(comp_data_full$phy)
-Vphy <- Vphy / max(Vphy)
-Vphy <- Vphy / exp(determinant(Vphy)$modulus[1]/nspp)
+Vphy <- solve(Vphy)
 
 order <- match(p$MSW05_Binomial, colnames(Vphy))
 Vphy <- Vphy[order, order] # same order as species levels
 
-apriori_form_inla2 <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
-                             X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
-                             f(ii, model = 'generic0', Cmatrix = Vphy)
 
 # fit full model
 
-m0_inla_comp_full <- inla(apriori_form_inla2, data = cbind(p_impute, ii = 1:nrow(p_impute)), 
+m0_inla_comp_full <- inla(apriori_form_inla, data = cbind(p_impute, phylo = 1:nrow(p_impute)), 
                       control.predictor = list(compute = TRUE),
                       control.inla= list(strategy = "gaussian", int.strategy = "eb"))
 
@@ -612,7 +609,7 @@ for(f in 1:5){
   # remove hold out data
   cv_data$y[folds[[f]]] <- NA
 
-  m0_inla_comp2[[f]] <- inla(apriori_form_inla2, data = cv_data, 
+  m0_inla_comp2[[f]] <- inla(apriori_form_inla, data = cv_data, 
                       control.predictor = list(compute = TRUE),
                       control.inla= list(strategy = "gaussian", int.strategy = "eb"))
 
