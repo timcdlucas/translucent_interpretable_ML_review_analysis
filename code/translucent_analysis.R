@@ -598,13 +598,15 @@ m0_inla_comp_full$summary.fixed
 m0_inla_comp_full$summary.hyperpar
 
 
+
+
 #+ INLA_phyloreg_cv
 # cross validation
 m0_inla_comp2 <- list()
 
 for(f in 1:5){
 
-  cv_data <- cbind(p_impute, ii = 1:nrow(p_impute))
+  cv_data <- cbind(p_impute, phylo = 1:nrow(p_impute))
 
   # remove hold out data
   cv_data$y[folds[[f]]] <- NA
@@ -638,25 +640,28 @@ ggplot(inla_apriori_cvdat, aes(y, predy)) +
 
 mlist <- list(m1_enet, m2_gp, m3_rf)
 
-cv_preds <- lapply(mlist, best_tune_preds)
-cv_preds <- lapply(seq_along(cv_preds), function (x) cv_preds[[x]]$predicted)
-cv_preds <- do.call(cbind, cv_preds)
+cv_preds_raw <- lapply(mlist, best_tune_preds)
+cv_preds <- lapply(seq_along(cv_preds_raw), function (x) cv_preds_raw[[x]]$pred)
+cv_preds <- do.call(cbind, cv_preds) %>% data.frame
+
+# Put into correct order
+cv_preds <- cv_preds[order(cv_preds_raw[[1]]$rowIndex), ]
 
 names(cv_preds) <- c('enet', 'gp', 'rf')
 
-cv_preds$y <- p_impute$y # check order
-cv_preds$ii <- seq_len(nrow(cv_preds))
+cv_preds <- mutate(cv_preds, y = p_impute$y) # check order
+cv_preds$phylo <- seq_len(nrow(cv_preds))
 
 stacked_form <- y ~  
   f(enet, model='clinear', range=c(0, Inf), initial=0) +
   f(gp, model='clinear', range=c(0, Inf), initial=0) +
   f(rf, model='clinear', range=c(0, Inf), initial=0) +
-  f(ii, model = 'generic0', Cmatrix = Vphy)
+  f(phylo, model = 'generic0', Cmatrix = Vphy)
 
 
 #+ stacked_full, eval = FALSE
 
-m0_inla_comp_full <- inla(stacked_form, data = cv_preds, 
+stacked_full <- inla(stacked_form, data = cv_preds, 
                       control.predictor = list(compute = TRUE),
                       control.inla= list(strategy = "gaussian", int.strategy = "eb"))
 
