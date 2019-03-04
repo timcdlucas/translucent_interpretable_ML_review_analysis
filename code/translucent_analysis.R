@@ -557,7 +557,7 @@ Vphy <- Vphy[order, order] # same order as species levels
 
 apriori_form_inla <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
                              X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
-                             f(phylo, model = 'generic0', Cmatrix = Vphy)
+                             f(phylo, model = 'generic0', Cmatrix = Vphy, param = c(0.5, 0.5))
 
 
 
