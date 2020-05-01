@@ -30,12 +30,16 @@ library(iml)
 library(elasticnet)
 library(INLA)
 
+library(palettetown)
+
 
 # Phylogenetic libraries.
 library(ape)
 library(caper)
 
 source('helpers.R')
+
+set.seed(100)
 
 #'## The data
 
@@ -49,6 +53,7 @@ p <- read.table(file = 'http://esapubs.org/archive/ecol/E090/184/PanTHERIA_1-0_W
 names(p)
 sapply(p, function(x) mean(is.na(x))) %>% sort
 sapply(p, class)
+dim(p)
 
 
 #' Now we need to choose a variable of interest and make some basic exploratory plots.
@@ -227,7 +232,7 @@ plot(m1_enet)
 plotCV(m1_enet)
 
 #+ elastic_net_summary
-m1_enet$results$RMSE %>% min
+m1_enet$results$Rsquared %>% max
 
 
 # Find the final parameters 
@@ -248,7 +253,7 @@ plotCV(m2_gp)
 m2_gp
 
 #+ gp_summary
-m2_gp$results$RMSE %>% min
+m2_gp$results$Rsquared %>% max
 
 #+ ranger, eval = TRUE
 
@@ -262,7 +267,7 @@ plotCV(m3_rf)
 m3_rf
 
 #+ ranger_summary
-m3_rf$results$RMSE %>% min
+m3_rf$results$Rsquared %>% max
 
 
 
@@ -304,7 +309,6 @@ varImp(m3_rf)
 #' ## Now plot some functional forms
 
 #+ pdp_gest
-
 partial(m2_gp, 
         pred.var = c('X9.1_GestationLen_d'),
         parallel = TRUE, plot = TRUE)
@@ -518,7 +522,10 @@ m3_rf_gen
 
 
 #+ ranger_gen_summary
-m3_rf_gen$results$RMSE %>% min
+m3_rf_gen$results$Rsquared %>% max
+
+
+
 
 
 
@@ -555,9 +562,15 @@ Vphy <- solve(Vphy)
 order <- match(p$MSW05_Binomial[1:200], colnames(Vphy))
 Vphy <- Vphy[order, order] # same order as species levels
 
+# Decide a decent prior.
+#  Want it to be considerably less than the sd of residuals from fixed effects model.
+sd(m0_lm$finalModel$residuals)
+
+hyper.prior <- list(prec = list(prior="pc.prec", param = c(0.01, 0.00001)))
+
 apriori_form_inla <- y ~ X5.1_AdultBodyMass_g + X3.1_AgeatFirstBirth_d + X18.1_BasalMetRate_mLO2hr + 
                              X9.1_GestationLen_d + X16.1_LittersPerYear + X17.1_MaxLongevity_m + 
-                             f(phylo, model = 'generic0', Cmatrix = Vphy, param = c(0.5, 0.5))
+                             f(phylo, model = 'generic0', Cmatrix = Vphy, hyper = hyper.prior)
 
 
 
@@ -583,6 +596,8 @@ Vphy <- solve(Vphy)
 
 order <- match(p$MSW05_Binomial, colnames(Vphy))
 Vphy <- Vphy[order, order] # same order as species levels
+
+
 
 
 # fit full model
@@ -629,6 +644,10 @@ for(f in 1:5){
 
 sqrt(mean((inla_apriori_cvdat$predy - inla_apriori_cvdat$y) ^ 2))
 
+cor(inla_apriori_cvdat$predy, inla_apriori_cvdat$y)
+
+lm(inla_apriori_cvdat$predy ~ inla_apriori_cvdat$y) %>% summary %>% `$`('r.squared')
+
 ggplot(inla_apriori_cvdat, aes(y, predy)) +
   geom_point() +
   #scale_y_continuous(limits = c(NA, 3)) + 
@@ -636,7 +655,79 @@ ggplot(inla_apriori_cvdat, aes(y, predy)) +
   geom_smooth() 
 
 
-#+ stacked_gen_setup, eval = FALSE
+
+
+
+#'## Regularised linear model
+
+
+#+INLA_enet, eval = FALSE
+
+# fit full model
+
+enet_form_inla <- paste0('y ~ ', paste(names(p_impute %>% dplyr::select(- y)), collapse = ' + '),
+                          ' + f(phylo, model = \'generic0\', Cmatrix = Vphy, hyper = hyper.prior)') %>% formula
+
+# Select sd of fixed effect prior of 0.001. Gives us precision of 1e6.
+m1_enet_inla_full <- inla(enet_form_inla, data = cbind(p_impute, phylo = 1:nrow(p_impute)), 
+                      control.predictor = list(compute = TRUE),
+                      control.fixed = list(prec = 1e6),
+                      control.inla= list(strategy = "gaussian", int.strategy = "eb"))
+
+
+
+m1_enet_inla_full$summary.fixed
+m1_enet_inla_full$summary.hyperpar
+
+
+
+
+#+ INLA_enet_cv, eval = TRUE
+# cross validation
+m1_enet_inla <- list()
+
+for(f in 1:5){
+
+  cv_data <- cbind(p_impute, phylo = 1:nrow(p_impute))
+
+  # remove hold out data
+  cv_data$y[folds[[f]]] <- NA
+
+  m1_enet_inla[[f]] <- inla(enet_form_inla, data = cv_data, 
+                      control.predictor = list(compute = TRUE),
+                      control.fixed = list(prec = 1e6),
+                      control.inla= list(strategy = "gaussian", int.strategy = "eb"))
+
+}
+
+#+ INLA_even_cv_analysis, eval = TRUE
+# calc rmse and scatter plot
+
+inla_enet_cvdat <- data.frame(y = p_impute$y, predy = NA)
+
+for(f in 1:5){
+  inla_enet_cvdat$predy[folds[[f]]] <- m1_enet_inla[[f]]$summary.fitted.values$mean[folds[[f]]]
+}
+
+
+sqrt(mean((inla_enet_cvdat$predy - inla_enet_cvdat$y) ^ 2))
+
+cor(inla_enet_cvdat$predy, inla_enet_cvdat$y)
+
+lm(inla_enet_cvdat$predy ~ inla_enet_cvdat$y) %>% summary %>% `$`('r.squared')
+
+ggplot(inla_enet_cvdat, aes(y, predy)) +
+  geom_point() +
+  #scale_y_continuous(limits = c(NA, 3)) + 
+  geom_abline(slope = 1, intercept = 0) +
+  geom_smooth() 
+
+
+
+
+
+
+#+ stacked_gen_setup, eval = TRUE
 
 mlist <- list(m1_enet, m2_gp, m3_rf)
 
@@ -652,24 +743,100 @@ names(cv_preds) <- c('enet', 'gp', 'rf')
 cv_preds <- mutate(cv_preds, y = p_impute$y) # check order
 cv_preds$phylo <- seq_len(nrow(cv_preds))
 
-stacked_form <- y ~  
+stacked_form <- y ~ 0 + 
   f(enet, model='clinear', range=c(0, Inf), initial=0) +
   f(gp, model='clinear', range=c(0, Inf), initial=0) +
   f(rf, model='clinear', range=c(0, Inf), initial=0) +
-  f(phylo, model = 'generic0', Cmatrix = Vphy)
+  f(phylo, model = 'generic0', Cmatrix = Vphy, hyper = hyper.prior)
 
 
-#+ stacked_full, eval = FALSE
+#+ stacked_full, eval = TRUE
 
 stacked_full <- inla(stacked_form, data = cv_preds, 
                       control.predictor = list(compute = TRUE),
                       control.inla= list(strategy = "gaussian", int.strategy = "eb"))
 
 
+stacked_full$summary.fixed
+stacked_full$summary.hyperpar
 
 
-m0_inla_comp_full$summary.fixed
-m0_inla_comp_full$summary.hyperpar
+
+
+
+
+
+#+ INLA_stacked_cv
+# cross validation
+
+stacked_full2 <- list()
+
+for(f in 1:5){
+
+  cv_data <- cv_preds
+
+  # remove hold out data
+  cv_data$y[folds[[f]]] <- NA
+
+  stacked_full2[[f]] <- inla(stacked_form, data = cv_data, 
+                      control.predictor = list(compute = TRUE),
+                      control.inla= list(strategy = "gaussian", int.strategy = "eb"))
+
+}
+
+#+ INLA_stacked_cv_analysis
+# calc rmse and scatter plot
+
+stacked_cvdat <- data.frame(y = p_impute$y, predy = NA)
+
+for(f in 1:5){
+  stacked_cvdat$predy[folds[[f]]] <- stacked_full2[[f]]$summary.fitted.values$mean[folds[[f]]]
+}
+
+
+sqrt(mean((stacked_cvdat$predy - stacked_cvdat$y) ^ 2))
+
+cor(stacked_cvdat$predy, stacked_cvdat$y)
+
+lm(stacked_cvdat$predy ~ stacked_cvdat$y) %>% summary %>% `$`('r.squared')
+
+ggplot(stacked_cvdat, aes(y, predy)) +
+  geom_point() +
+  #scale_y_continuous(limits = c(NA, 3)) + 
+  geom_abline(slope = 1, intercept = 0) +
+  geom_smooth() 
+
+
+
+
+
+
+#' ## Using distance to each other as covariates
+
+#+ ranger_dist
+
+dist <- ape::cophenetic.phylo(comp_data_full$phy)
+dist <- dist[order, order] # same order as species levels
+
+dist_data <- cbind(p_impute, dist)
+
+m3_rf_dist <- train(y ~ ., data = dist_data, method = 'ranger', tuneGrid = rf_gr_gen, 
+                   trControl = trcntrl, na.action = na.omit, importance = 'impurity', 
+                   save.memory = TRUE, num.trees = 1000)
+
+plot(m3_rf_dist)
+
+plotCV(m3_rf_dist)
+
+m3_rf_dist
+
+
+#+ ranger_dist_summary
+m3_rf_dist$results$Rsquared %>% max
+
+
+
+
 
 
 
@@ -680,6 +847,7 @@ m0_inla_comp_full$summary.hyperpar
 
 
 #+ lime, fig.width = 10, fig.height = 12
+
 
 # Explain Tenrec ecaudatus. Largest litter size. And other large litters
 l1 <- pred_head(m1_enet)
@@ -707,11 +875,93 @@ plot_features(m3_explain)
 
 
 
+#+ lime2, fig.width = 10, fig.height = 5
+
+l2 <- pred_head(m2_gp, 2)
+l3 <- pred_head(m3_rf, 2)
+
+
+m2_lime2 <- lime(p_impute, m2_gp, bin_continuous = FALSE, quantile_bins = FALSE)
+m2_explain2 <- explain(p_impute[l2, ], m2_lime2, n_features = 10, feature_select = 'auto')
+m2_explain2$prediction <- round(m2_explain2$prediction, 2)
+
+plot_features(m2_explain2)
+
+
+m3_lime2 <- lime(p_impute, m3_rf, bin_continuous = FALSE, quantile_bins = FALSE)
+
+m3_explain2 <- explain(p_impute[l3, ], m3_lime2, n_features = 10, feature_select = 'auto')
+m3_explain2$prediction <- round(m3_explain2$prediction, 2)
+plot_features(m3_explain2)
 
 
 
+#+ pub_figs_hyp
 
 
+
+m1_enet$results %>% 
+  ggplot(aes(fraction, Rsquared, colour = lambda, group = factor(lambda))) + 
+    geom_line() +
+    geom_point() +
+    scale_color_viridis_c(trans = 'log10') +
+    xlab('Lasso/Ridge fraction')
+
+
+m2_gp$results %>% 
+  ggplot(aes(sigma, Rsquared)) +
+    geom_line() +
+    geom_point() +
+    xlab('Sigma')
+
+
+m3_rf$results %>% 
+  ggplot(aes(mtry, Rsquared, colour = factor(min.node.size), group = factor(min.node.size))) + 
+    geom_line() +
+    geom_point() +
+    scale_colour_poke(pokemon = 'oddish', spread = 4) +
+    xlab('mtry') +
+    labs(colour = 'min.node.size')
+
+
+#+ pub_figs_cv
+
+plotCV(m0_lm, smooth = FALSE, print = FALSE) +
+  scale_colour_poke(pokemon = 'wartortle') +
+  xlab('Observed values') +
+  ylab('Predicted values')
+
+plotCV(m1_enet, smooth = FALSE, print = FALSE) +
+  scale_colour_poke(pokemon = 'blastoise')+
+  xlab('Observed values') +
+  ylab('Predicted values')
+
+
+plotCV(m2_gp, smooth = FALSE, print = FALSE) +
+  scale_colour_poke(pokemon = 'parasect')+
+  xlab('Observed values') +
+  ylab('Predicted values')
+
+plotCV(m3_rf, smooth = FALSE, print = FALSE) +
+  scale_colour_poke(pokemon = 'venusaur')+
+  xlab('Observed values') +
+  ylab('Predicted values')
+
+
+
+#+ enet_marginals
+
+partial(m1_enet, 
+        pred.var = c('X9.1_GestationLen_d'),
+        parallel = TRUE, plot = TRUE)
+
+
+m1_enet_ice <- ice(m1_enet, p_impute, p_impute$y, 'X9.1_GestationLen_d', frac_to_build = 0.1)
+plot(m1_enet_ice)
+
+m1_enet_ice_c <- ice(m1_enet, p_impute, p_impute$y, 'X9.1_GestationLen_d')
+clusterICE(m1_enet_ice_c, nClusters = 20, centered = TRUE)
+clusterICE(m1_enet_ice_c, nClusters = 20, centered = FALSE)
 
 
 #+ session_info
@@ -719,7 +969,7 @@ plot_features(m3_explain)
 sessionInfo()
 
 
-#+ close_cluster, cache = FALSE
+#+ close_cluster, cache = FALSE, eval = TRUE
 
 stopCluster(cl)
 
