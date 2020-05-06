@@ -964,6 +964,15 @@ clusterICE(m1_enet_ice_c, nClusters = 20, centered = TRUE)
 clusterICE(m1_enet_ice_c, nClusters = 20, centered = FALSE)
 
 
+
+#+ enet_2d
+
+
+partial(m1_enet, 
+        pred.var = c('X9.1_GestationLen_d', 'X30.2_PET_Mean_mm'),
+        parallel = TRUE, plot = TRUE)
+
+
 #+ session_info
 
 sessionInfo()

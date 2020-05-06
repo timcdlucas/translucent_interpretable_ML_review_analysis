@@ -1,28 +1,42 @@
 
-plotCV <- function(t, print = TRUE){
+plotCV <- function(t, print = TRUE, smooth = TRUE){
   stopifnot(inherits(t, 'train'))
   
-  row_matches <- sapply(1:length(t$bestTune), function(x) t$pred[, names(t$bestTune)[x]] == t$bestTune[[x]])
-  best_rows <- rowMeans(row_matches) == 1
-
-  d <- t$pred[best_rows, ]
+  
+  d <- best_tune_preds(t)
+  
 
   if('weights' %in% names(d)){
-    p <- ggplot(d, aes(obs, pred, size = weights))
+    p <- ggplot(d, aes(obs, pred, size = weights, colour = 'a'))
   } else { 
-    p <- ggplot(d, aes(obs, pred))
+    p <- ggplot(d, aes(obs, pred, colour = 'a'))
   }
-
   p <- p + 
-        geom_point(alpha = 0.3) + 
-        geom_smooth() +
-        geom_abline(slope = 1, intercept = 0)
+    geom_point(alpha = 0.3) + 
+    geom_abline(slope = 1, intercept = 0) +
+    theme(legend.position = "none")
+  
+  if(smooth){
+    p <- p + geom_smooth()
+  }
+  
   
   if(print) print(p)
 
   return(invisible(p))
 
 } 
+
+best_tune_preds <- function (t){
+
+stopifnot(inherits(t, 'train'))
+
+row_matches <- sapply(1:length(t$bestTune), function(x) t$pred[, names(t$bestTune)[x]] == t$bestTune[[x]])
+  best_rows <- rowMeans(row_matches) == 1
+
+d <- t$pred[best_rows, ]
+
+}
 
 
 
@@ -62,5 +76,21 @@ compare_models <- function(t1, t2, print = TRUE){
   return(invisible(p))
 
 } 
+
+
+
+
+pred_head <- function(t, n = 5){
+  stopifnot(inherits(t, 'train'))
+  
+  row_matches <- sapply(1:length(t$bestTune), function(x) t$pred[, names(t$bestTune)[x]] == t$bestTune[[x]])
+  best_rows <- rowMeans(row_matches) == 1
+
+  d <- t$pred[best_rows, ]
+
+  d <- d %>% arrange(desc(pred))
+
+  head(d, n)$rowIndex
+}
 
 
