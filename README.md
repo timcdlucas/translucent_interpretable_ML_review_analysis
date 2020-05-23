@@ -9,3 +9,7 @@ However, the full analysis will take a day or more to run on a typical desktop.
 
 `code/helpers.R` includes a few small helper functions for plotting outputs from caret models.
 
+In the paper I introduce two new (as far as I know) methods for combining machine learning methods with phylogenetic data.
+These might be of particular interest to some.
+They start on lines 730 and 814 of the script.
+Please see the full paper for details.
