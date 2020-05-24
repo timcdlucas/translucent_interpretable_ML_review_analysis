@@ -19,6 +19,7 @@ knitr::opts_chunk$set(cache = TRUE, fig.width = 7, fig.height = 5)
 # General
 library(dplyr)
 library(ggplot2)
+library(patchwork)
 library(doParallel)
 
 # Modelling libraries
@@ -885,6 +886,7 @@ m2_lime2 <- lime(p_impute, m2_gp, bin_continuous = FALSE, quantile_bins = FALSE)
 m2_explain2 <- explain(p_impute[l2, ], m2_lime2, n_features = 10, feature_select = 'auto')
 m2_explain2$prediction <- round(m2_explain2$prediction, 2)
 
+f6a <- 
 plot_features(m2_explain2)
 
 
@@ -892,85 +894,188 @@ m3_lime2 <- lime(p_impute, m3_rf, bin_continuous = FALSE, quantile_bins = FALSE)
 
 m3_explain2 <- explain(p_impute[l3, ], m3_lime2, n_features = 10, feature_select = 'auto')
 m3_explain2$prediction <- round(m3_explain2$prediction, 2)
+
+f6b <- 
 plot_features(m3_explain2)
 
+#+ lime_comb, fig.width = 6, fig.height = 7
+f6 <- (f6a / f6b) +
+  plot_annotation(tag_levels = 'A') &
+  theme(text = element_text(size=7),
+        axis.title=element_text(size=10),
+        title = element_text(size=10),
+        axis.text.x = element_text(size=10),
+        legend.text = element_text(size=10) )
+f6
 
 
-#+ pub_figs_hyp
+#+ pub_figs_hyp, fig.width = 6, fig.height = 5
 
 
-
+f1a <- 
 m1_enet$results %>% 
   ggplot(aes(fraction, Rsquared, colour = lambda, group = factor(lambda))) + 
     geom_line() +
     geom_point() +
     scale_color_viridis_c(trans = 'log10') +
-    xlab('Lasso/Ridge fraction')
+    xlab('Lasso/Ridge fraction') + 
+    ggtitle('Elastic net')
 
-
+f1b <-
 m2_gp$results %>% 
   ggplot(aes(sigma, Rsquared)) +
     geom_line() +
     geom_point() +
-    xlab('Sigma')
+    xlab('Sigma') + 
+    ggtitle('Gaussian process')
 
-
+f1c <-
 m3_rf$results %>% 
   ggplot(aes(mtry, Rsquared, colour = factor(min.node.size), group = factor(min.node.size))) + 
     geom_line() +
     geom_point() +
     scale_colour_poke(pokemon = 'oddish', spread = 4) +
     xlab('mtry') +
-    labs(colour = 'min.node.size')
+    labs(colour = 'min.node.size') + 
+    ggtitle('Random Forest')
 
+f1 <- 
+  (f1a + f1b) / (f1c + plot_spacer()) +
+    plot_annotation(tag_levels = 'A') &
+    theme(text = element_text(size=10),
+          axis.title=element_text(size=10))
 
-#+ pub_figs_cv
+f1
 
+#+ pub_figs_cv, fig.width = 6, fig.height = 5
+
+f2a <-
 plotCV(m0_lm, smooth = FALSE, print = FALSE) +
   scale_colour_poke(pokemon = 'wartortle') +
   xlab('Observed values') +
-  ylab('Predicted values')
+  ylab('Predicted values') + 
+  ggtitle('A priori model')
 
+f2b <- 
 plotCV(m1_enet, smooth = FALSE, print = FALSE) +
   scale_colour_poke(pokemon = 'blastoise')+
   xlab('Observed values') +
-  ylab('Predicted values')
+  ylab('Predicted values') + 
+  ggtitle('Elastic net')
 
-
+f2c <- 
 plotCV(m2_gp, smooth = FALSE, print = FALSE) +
   scale_colour_poke(pokemon = 'parasect')+
   xlab('Observed values') +
-  ylab('Predicted values')
+  ylab('Predicted values') + 
+  ggtitle('Gaussian process')
 
+f2d <- 
 plotCV(m3_rf, smooth = FALSE, print = FALSE) +
   scale_colour_poke(pokemon = 'venusaur')+
   xlab('Observed values') +
-  ylab('Predicted values')
+  ylab('Predicted values') + 
+  ggtitle('Random Forest')
 
 
+f2 <- 
+  (f2a + f2b) / (f2c + f2d) +
+  plot_annotation(tag_levels = 'A') &
+  theme(text = element_text(size=10),
+        axis.text = element_text(size = 10),
+        axis.title=element_text(size=10))
 
-#+ enet_marginals
+f2
 
+
+#+ pdp_pub, fig.width = 6, fig.height = 5
+
+f3a <- 
 partial(m1_enet, 
         pred.var = c('X9.1_GestationLen_d'),
-        parallel = TRUE, plot = TRUE)
+        parallel = TRUE, plot = TRUE, plot.engine = 'ggplot2') + 
+  ggtitle('Elastic net') + 
+  labs(x = 'Gestation Length')
+
+f3b <- 
+partial(m2_gp, 
+        pred.var = c('X9.1_GestationLen_d'),
+        parallel = TRUE, plot = TRUE, plot.engine = 'ggplot2')+ 
+  ggtitle('Gaussian process') + 
+  labs(x = 'Gestation Length')
+
+f3c <- 
+partial(m3_rf, 
+        pred.var = c('X9.1_GestationLen_d'),
+        parallel = TRUE, plot = TRUE, plot.engine = 'ggplot2')+ 
+  ggtitle('Random Forest') + 
+  labs(x = 'Gestation Length')
 
 
+f3 <- 
+  (f3a + f3b) / (f3c + plot_spacer()) +
+  plot_annotation(tag_levels = 'A') &
+  theme(text = element_text(size=10),
+        axis.title=element_text(size=10))
+
+f3
+
+
+#+ ice_pub, fig.width = 6, fig.height = 4
 m1_enet_ice <- ice(m1_enet, p_impute, p_impute$y, 'X9.1_GestationLen_d', frac_to_build = 0.1)
-plot(m1_enet_ice)
-
 m1_enet_ice_c <- ice(m1_enet, p_impute, p_impute$y, 'X9.1_GestationLen_d')
-clusterICE(m1_enet_ice_c, nClusters = 20, centered = TRUE)
-clusterICE(m1_enet_ice_c, nClusters = 20, centered = FALSE)
+
+layout(mat = matrix(c(1,2,3,0,4,5), nrow = 2, byrow = TRUE))
+       
+par(cex = 0.7, mar = c(3.2, 3.1, 0.2, 0.1))
+plot(m1_enet_ice, xlab = '')
+mtext('Partial yhat', side = 2, line = 2)
+mtext('Gestation Length', side = 1, line = 2.2)
+
+plot(m2_gp_ice, xlab = '')
+mtext('Gestation Length', side = 1, line = 2.2)
+
+plot(m3_rf_ice, xlab = '')
+mtext('Gestation Length', side = 1, line = 2.2)
+
+clusterICE(m2_gp_ice_c, nClusters = 20, centered = FALSE, plot_margin = 0)
+mtext('Partial yhat', side = 2, line = 2)
+mtext('Gestation Length', side = 1, line = 2.2)
+
+clusterICE(m3_rf_ice_c, nClusters = 20, centered = FALSE, plot_margin = 0)
+mtext('Gestation Length', side = 1, line = 2.2)
 
 
 
-#+ enet_2d
 
+#+ pdp_2d_pun, fig.width = 6, fig.height = 2.3
 
+f5a <- 
 partial(m1_enet, 
         pred.var = c('X9.1_GestationLen_d', 'X30.2_PET_Mean_mm'),
-        parallel = TRUE, plot = TRUE)
+        parallel = TRUE, plot = TRUE, plot.engine = 'ggplot2')
+f5b <- 
+partial(m2_gp, 
+        pred.var = c('X9.1_GestationLen_d', 'X30.2_PET_Mean_mm'),
+        parallel = TRUE, plot = TRUE, plot.engine = 'ggplot2')
+
+f5c <- 
+partial(m3_rf, 
+        pred.var = c('X9.1_GestationLen_d', 'X30.2_PET_Mean_mm'),
+        parallel = TRUE, plot = TRUE, plot.engine = 'ggplot2')
+
+#+ pdp_2d_comb, fig.width = 3, fig.height = 6, dev='png', dpi = 300
+
+
+f5 <- 
+  (f5a / f5b / f5c) +
+  plot_annotation(tag_levels = 'A') &
+  theme(text = element_text(size=10),
+        axis.title=element_text(size=10))
+
+f5
+
+
 
 
 #+ session_info
