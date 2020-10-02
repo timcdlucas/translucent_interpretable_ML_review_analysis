@@ -13,3 +13,5 @@ In the paper I introduce two new (as far as I know) methods for combining machin
 These might be of particular interest to some.
 They start on lines 730 and 814 of the script.
 Please see the full paper for details.
+
+The paper is available open access. [https://esajournals.onlinelibrary.wiley.com/doi/full/10.1002/ecm.1422](https://esajournals.onlinelibrary.wiley.com/doi/full/10.1002/ecm.1422)
