@@ -45,9 +45,12 @@ set.seed(100)
 #'## The data
 
 #' First we need to read in the data.
+#'
+#' Download the data from here. https://wiley.figshare.com/articles/dataset/Full_Archive/3531875
+#' In the original supp mat, this was read directly but that isn't easy anymore.
 
 #+ data_read
-p <- read.table(file = 'http://esapubs.org/archive/ecol/E090/184/PanTHERIA_1-0_WR05_Aug2008.txt',
+p <- read.table(file = 'PanTHERIA_1-0_WR05_Aug2008.txt',
   header = TRUE, sep = "\t", na.strings = c("-999", "-999.00"))
 
 
